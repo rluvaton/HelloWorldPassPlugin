@@ -99,9 +99,9 @@
 #include "llvm/Transforms/Scalar/SimpleLoopUnswitch.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/Local.h"
-// #include "llvm/Transforms/Utils/LoopUtils.h"
 #include "llvm/Transforms/Utils/ScalarEvolutionExpander.h"
 #include "llvm/Transforms/Utils/SimplifyIndVar.h"
+// #include "llvm/Transforms/Utils/SimplifyIndVar.h"
 #include <cassert>
 #include <cstdint>
 #include <utility>
@@ -137,6 +137,7 @@ namespace HelloWorldPlugin {
 using namespace llvm;
 using namespace PatternMatch;
 using namespace SCEVPatternMatch;
+using namespace MyLoopUtils;
 
 #define DEBUG_TYPE "indvars"
 
@@ -146,20 +147,20 @@ STATISTIC(NumLFTR, "Number of loop exit tests replaced");
 STATISTIC(NumElimExt, "Number of IV sign/zero extends eliminated");
 STATISTIC(NumElimIV, "Number of congruent IVs eliminated");
 
-static cl::opt<ReplaceExitVal> ReplaceExitValue(
-    "replexitval", cl::Hidden, cl::init(OnlyCheapRepl),
+static cl::opt<llvm::MyLoopUtils::ReplaceExitVal> ReplaceExitValue(
+    "replexitval", cl::Hidden, cl::init(llvm::MyLoopUtils::OnlyCheapRepl),
     cl::desc("Choose the strategy to replace exit value in IndVarSimplify"),
     cl::values(
-        clEnumValN(NeverRepl, "never", "never replace exit value"),
-        clEnumValN(OnlyCheapRepl, "cheap",
+        clEnumValN(llvm::MyLoopUtils::NeverRepl, "never", "never replace exit value"),
+        clEnumValN(llvm::MyLoopUtils::OnlyCheapRepl, "cheap",
                    "only replace exit value when the cost is cheap"),
         clEnumValN(
-            UnusedIndVarInLoop, "unusedindvarinloop",
+            llvm::MyLoopUtils::UnusedIndVarInLoop, "unusedindvarinloop",
             "only replace exit value when it is an unused "
             "induction variable in the loop and has cheap replacement cost"),
-        clEnumValN(NoHardUse, "noharduse",
+        clEnumValN(llvm::MyLoopUtils::NoHardUse, "noharduse",
                    "only replace exit values when loop def likely dead"),
-        clEnumValN(AlwaysRepl, "always",
+        clEnumValN(llvm::MyLoopUtils::AlwaysRepl, "always",
                    "always replace exit value whenever possible")));
 
 static cl::opt<bool> UsePostIncrementRanges(
@@ -948,9 +949,9 @@ static PHINode *FindLoopCounter(Loop *L, BasicBlock *ExitingBB,
 
     const SCEV *Init = AR->getStart();
 
-    if (BestPhi && !isAlmostDeadIV(BestPhi, LatchBlock, Cond)) {
+    if (BestPhi && !MyLoopUtils::isAlmostDeadIV(BestPhi, LatchBlock, Cond)) {
       // Don't force a live loop counter if another IV can be used.
-      if (isAlmostDeadIV(Phi, LatchBlock, Cond))
+      if (MyLoopUtils::isAlmostDeadIV(Phi, LatchBlock, Cond))
         continue;
 
       // Prefer to count-from-zero. This is a more "canonical" counter form. It
@@ -1989,10 +1990,10 @@ bool IndVarSimplify::run(Loop *L) {
   // that are recurrent in the loop, and substitute the exit values from the
   // loop into any instructions outside of the loop that use the final values
   // of the current expressions.
-  if (ReplaceExitValue != NeverRepl) {
+  if (ReplaceExitValue != llvm::MyLoopUtils::NeverRepl) {
     llvm::errs() << "ReplaceExitValue != NeverRepl\n";
 
-    if (int Rewrites = rewriteLoopExitValues(L, LI, TLI, SE, TTI, Rewriter, DT,
+    if (int Rewrites = MyLoopUtils::rewriteLoopExitValues(L, LI, TLI, SE, TTI, Rewriter, DT,
                                              ReplaceExitValue, DeadInsts)) {
       llvm::errs() << "int Rewrites = rewriteLoopExitValues(L, LI, TLI, SE, TTI, Rewriter, DT, ReplaceExitValue, DeadInsts)\n";
 

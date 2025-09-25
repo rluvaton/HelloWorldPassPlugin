@@ -49,22 +49,24 @@
 
 using namespace llvm;
 using namespace llvm::PatternMatch;
+using namespace llvm::MyLoopUtils;
 
-namespace MyLoopUtils {
+namespace llvm::MyLoopUtils {
 
 #define DEBUG_TYPE "loop-utils"
 
 static const char *LLVMLoopDisableNonforced = "llvm.loop.disable_nonforced";
 static const char *LLVMLoopDisableLICM = "llvm.licm.disable";
 
-bool formDedicatedExitBlocks(Loop *L, DominatorTree *DT, LoopInfo *LI,
-                             MemorySSAUpdater *MSSAU, bool PreserveLCSSA) {
+bool formDedicatedExitBlocks(llvm::Loop *L, DominatorTree *DT,
+                             llvm::LoopInfo *LI, llvm::MemorySSAUpdater *MSSAU,
+                             bool PreserveLCSSA) {
   bool Changed = false;
 
   // We re-use a vector for the in-loop predecesosrs.
-  SmallVector<BasicBlock *, 4> InLoopPredecessors;
+  SmallVector<llvm::BasicBlock *, 4> InLoopPredecessors;
 
-  auto RewriteExit = [&](BasicBlock *BB) {
+  auto RewriteExit = [&](llvm::BasicBlock *BB) {
     assert(InLoopPredecessors.empty() &&
            "Must start with an empty predecessors list!");
     auto Cleanup = make_scope_exit([&] { InLoopPredecessors.clear(); });
@@ -93,18 +95,17 @@ bool formDedicatedExitBlocks(Loop *L, DominatorTree *DT, LoopInfo *LI,
         BB, InLoopPredecessors, ".loopexit", DT, LI, MSSAU, PreserveLCSSA);
 
     if (!NewExitBB)
-      LLVM_DEBUG(
-          dbgs() << "WARNING: Can't create a dedicated exit block for loop: "
-                 << *L << "\n");
+          llvm::errs() << "WARNING: Can't create a dedicated exit block for loop: "
+                 << *L << "\n";
     else
-      LLVM_DEBUG(dbgs() << "LoopSimplify: Creating dedicated exit block "
-                        << NewExitBB->getName() << "\n");
+      llvm::errs() << "LoopSimplify: Creating dedicated exit block "
+                        << NewExitBB->getName() << "\n";
     return true;
   };
 
   // Walk the exit blocks directly rather than building up a data structure for
   // them, but only visit each one once.
-  SmallPtrSet<BasicBlock *, 4> Visited;
+  SmallPtrSet<llvm::BasicBlock *, 4> Visited;
   for (auto *BB : L->blocks())
     for (auto *SuccBB : successors(BB)) {
       // We're looking for exit blocks so skip in-loop successors.
@@ -122,8 +123,8 @@ bool formDedicatedExitBlocks(Loop *L, DominatorTree *DT, LoopInfo *LI,
 }
 
 /// Returns the instructions that use values defined in the loop.
-SmallVector<Instruction *, 8> findDefsUsedOutsideOfLoop(Loop *L) {
-  SmallVector<Instruction *, 8> UsedOutside;
+SmallVector<llvm::Instruction *, 8> findDefsUsedOutsideOfLoop(Loop *L) {
+  SmallVector<llvm::Instruction *, 8> UsedOutside;
 
   for (auto *Block : L->getBlocks())
     // FIXME: I believe that this could use copy_if if the Inst reference could
@@ -131,7 +132,7 @@ SmallVector<Instruction *, 8> findDefsUsedOutsideOfLoop(Loop *L) {
     for (auto &Inst : *Block) {
       auto Users = Inst.users();
       if (any_of(Users, [&](User *U) {
-            auto *Use = cast<Instruction>(U);
+            auto *Use = cast<llvm::Instruction>(U);
             return !L->contains(Use->getParent());
           }))
         UsedOutside.push_back(&Inst);
@@ -149,7 +150,8 @@ SmallVector<Instruction *, 8> findDefsUsedOutsideOfLoop(Loop *L) {
 //   AU.addRequired<LoopInfoWrapperPass>();
 //   AU.addPreserved<LoopInfoWrapperPass>();
 
-//   // We must also preserve LoopSimplify and LCSSA. We locally access their IDs
+//   // We must also preserve LoopSimplify and LCSSA. We locally access their
+//   IDs
 //   // here because users shouldn't directly get them from this header.
 //   // extern char &llvm::LoopSimplifyID;
 //   extern char &LCSSAID;
@@ -157,16 +159,20 @@ SmallVector<Instruction *, 8> findDefsUsedOutsideOfLoop(Loop *L) {
 //   AU.addPreservedID(llvm::LoopSimplifyID);
 //   AU.addRequiredID(LCSSAID);
 //   AU.addPreservedID(LCSSAID);
-//   // This is used in the LPPassManager to perform LCSSA verification on passes
+//   // This is used in the LPPassManager to perform LCSSA verification on
+//   passes
 //   // which preserve lcssa form
 //   AU.addRequired<LCSSAVerificationPass>();
 //   AU.addPreserved<LCSSAVerificationPass>();
 
-//   // Loop passes are designed to run inside of a loop pass manager which means
-//   // that any function analyses they require must be required by the first loop
+//   // Loop passes are designed to run inside of a loop pass manager which
+//   means
+//   // that any function analyses they require must be required by the first
+//   loop
 //   // pass in the manager (so that it is computed before the loop pass manager
 //   // runs) and preserved by all loop pasess in the manager. To make this
-//   // reasonably robust, the set needed for most loop passes is maintained here.
+//   // reasonably robust, the set needed for most loop passes is maintained
+//   here.
 //   // If your loop pass requires an analysis not listed here, you will need to
 //   // carefully audit the loop pass manager nesting structure that results.
 //   AU.addRequired<AAResultsWrapperPass>();
@@ -366,7 +372,7 @@ llvm::MyLoopUtils::TransformationMode hasUnrollTransformation(const Loop *L) {
   if (getBooleanLoopAttribute(L, "llvm.loop.unroll.full"))
     return llvm::MyLoopUtils::TM_ForcedByUser;
 
-  if (hasDisableAllTransformsHint(L))
+  if (MyLoopUtils::hasDisableAllTransformsHint(L))
     return llvm::MyLoopUtils::TM_Disable;
 
   return llvm::MyLoopUtils::TM_Unspecified;
@@ -386,7 +392,7 @@ hasUnrollAndJamTransformation(const Loop *L) {
   if (getBooleanLoopAttribute(L, "llvm.loop.unroll_and_jam.enable"))
     return llvm::MyLoopUtils::TM_ForcedByUser;
 
-  if (hasDisableAllTransformsHint(L))
+  if (MyLoopUtils::hasDisableAllTransformsHint(L))
     return llvm::MyLoopUtils::TM_Disable;
 
   return llvm::MyLoopUtils::TM_Unspecified;
@@ -401,7 +407,7 @@ hasVectorizeTransformation(const Loop *L) {
     return llvm::MyLoopUtils::TM_SuppressedByUser;
 
   std::optional<ElementCount> VectorizeWidth =
-      getOptionalElementCountLoopAttribute(L);
+      llvm::MyLoopUtils::getOptionalElementCountLoopAttribute(L);
   std::optional<int> InterleaveCount =
       getOptionalIntLoopAttribute(L, "llvm.loop.interleave.count");
 
@@ -423,7 +429,7 @@ hasVectorizeTransformation(const Loop *L) {
   if ((VectorizeWidth && VectorizeWidth->isVector()) || InterleaveCount > 1)
     return llvm::MyLoopUtils::TM_Enable;
 
-  if (hasDisableAllTransformsHint(L))
+  if (MyLoopUtils::hasDisableAllTransformsHint(L))
     return llvm::MyLoopUtils::TM_Disable;
 
   return llvm::MyLoopUtils::TM_Unspecified;
@@ -434,7 +440,7 @@ hasDistributeTransformation(const Loop *L) {
   if (getBooleanLoopAttribute(L, "llvm.loop.distribute.enable"))
     return llvm::MyLoopUtils::TM_ForcedByUser;
 
-  if (hasDisableAllTransformsHint(L))
+  if (MyLoopUtils::hasDisableAllTransformsHint(L))
     return llvm::MyLoopUtils::TM_Disable;
 
   return llvm::MyLoopUtils::TM_Unspecified;
@@ -445,7 +451,7 @@ hasLICMVersioningTransformation(const Loop *L) {
   if (getBooleanLoopAttribute(L, "llvm.loop.licm_versioning.disable"))
     return llvm::MyLoopUtils::TM_SuppressedByUser;
 
-  if (hasDisableAllTransformsHint(L))
+  if (MyLoopUtils::hasDisableAllTransformsHint(L))
     return llvm::MyLoopUtils::TM_Disable;
 
   return llvm::MyLoopUtils::TM_Unspecified;
@@ -512,7 +518,7 @@ void deleteDeadLoop(Loop *L, DominatorTree *DT, ScalarEvolution *SE,
     SE->forgetBlockAndLoopDispositions();
   }
 
-  Instruction *OldTerm = Preheader->getTerminator();
+  llvm::Instruction *OldTerm = Preheader->getTerminator();
   assert(!OldTerm->mayHaveSideEffects() &&
          "Preheader must end with a side-effect-free terminator");
   assert(OldTerm->getNumSuccessors() == 1 &&
@@ -602,8 +608,8 @@ void deleteDeadLoop(Loop *L, DominatorTree *DT, ScalarEvolution *SE,
     if (MSSA) {
       MSSAU->applyUpdates({{DominatorTree::Delete, Preheader, L->getHeader()}},
                           *DT);
-      SmallSetVector<BasicBlock *, 8> DeadBlockSet(L->block_begin(),
-                                                   L->block_end());
+      llvm::SmallSetVector<BasicBlock *, 8> DeadBlockSet(L->block_begin(),
+                                                         L->block_end());
       MSSAU->removeBlocks(DeadBlockSet);
       if (VerifyMemorySSA)
         MSSA->verifyMemorySSA();
@@ -714,8 +720,9 @@ void deleteDeadLoop(Loop *L, DominatorTree *DT, ScalarEvolution *SE,
   }
 }
 
-void breakLoopBackedge(llvm::Loop *L, llvm::DominatorTree &DT, llvm::ScalarEvolution &SE,
-                             llvm::LoopInfo &LI, llvm::MemorySSA *MSSA) {
+void breakLoopBackedge(llvm::Loop *L, llvm::DominatorTree &DT,
+                       llvm::ScalarEvolution &SE, llvm::LoopInfo &LI,
+                       llvm::MemorySSA *MSSA) {
   auto *Latch = L->getLoopLatch();
   assert(Latch && "multiple latches not yet supported");
   auto *Header = L->getHeader();
@@ -843,8 +850,7 @@ static std::optional<unsigned> getEstimatedTripCount(BranchInst *ExitingBranch,
 }
 
 std::optional<unsigned>
-getLoopEstimatedTripCount(Loop *L,
-                                unsigned *EstimatedLoopInvocationWeight) {
+getLoopEstimatedTripCount(Loop *L, unsigned *EstimatedLoopInvocationWeight) {
   // Currently we take the estimate exit count only from the loop latch,
   // ignoring other exiting blocks.  This can overestimate the trip count
   // if we exit through another exit, but can never underestimate it.
@@ -862,7 +868,7 @@ getLoopEstimatedTripCount(Loop *L,
 }
 
 bool setLoopEstimatedTripCount(Loop *L, unsigned EstimatedTripCount,
-                                     unsigned EstimatedloopInvocationWeight) {
+                               unsigned EstimatedloopInvocationWeight) {
   // At the moment, we currently support changing the estimate trip count of
   // the latch branch only.  We could extend this API to manipulate estimated
   // trip counts for any exit.
@@ -893,8 +899,7 @@ bool setLoopEstimatedTripCount(Loop *L, unsigned EstimatedTripCount,
   return true;
 }
 
-bool hasIterationCountInvariantInParent(Loop *InnerLoop,
-                                              ScalarEvolution &SE) {
+bool hasIterationCountInvariantInParent(Loop *InnerLoop, ScalarEvolution &SE) {
   Loop *OuterL = InnerLoop->getParentLoop();
   if (!OuterL)
     return true;
@@ -915,7 +920,7 @@ bool hasIterationCountInvariantInParent(Loop *InnerLoop,
   return true;
 }
 
-constexpr Intrinsic::ID getReductionIntrinsicID(RecurKind RK) {
+constexpr Intrinsic::ID myGetReductionIntrinsicID(RecurKind RK) {
   switch (RK) {
   default:
     llvm_unreachable("Unexpected recurrence kind");
@@ -1102,17 +1107,17 @@ CmpInst::Predicate getMinMaxReductionPredicate(RecurKind RK) {
 }
 
 Value *createMinMaxOp(IRBuilderBase &Builder, RecurKind RK, Value *Left,
-                            Value *Right) {
+                      Value *Right) {
   Type *Ty = Left->getType();
   if (Ty->isIntOrIntVectorTy() ||
       (RK == RecurKind::FMinNum || RK == RecurKind::FMaxNum ||
        RK == RecurKind::FMinimum || RK == RecurKind::FMaximum ||
        RK == RecurKind::FMinimumNum || RK == RecurKind::FMaximumNum)) {
-    Intrinsic::ID Id = getMinMaxReductionIntrinsicOp(RK);
+    Intrinsic::ID Id = llvm::MyLoopUtils::getMinMaxReductionIntrinsicOp(RK);
     return Builder.CreateIntrinsic(Ty, Id, {Left, Right}, nullptr,
                                    "rdx.minmax");
   }
-  CmpInst::Predicate Pred = getMinMaxReductionPredicate(RK);
+  CmpInst::Predicate Pred = llvm::MyLoopUtils::getMinMaxReductionPredicate(RK);
   Value *Cmp = Builder.CreateCmp(Pred, Left, Right, "rdx.minmax.cmp");
   Value *Select = Builder.CreateSelect(Cmp, Left, Right, "rdx.minmax.select");
   return Select;
@@ -1120,7 +1125,7 @@ Value *createMinMaxOp(IRBuilderBase &Builder, RecurKind RK, Value *Left,
 
 // Helper to generate an ordered reduction.
 Value *getOrderedReduction(IRBuilderBase &Builder, Value *Acc, Value *Src,
-                                 unsigned Op, RecurKind RdxKind) {
+                           unsigned Op, RecurKind RdxKind) {
   unsigned VF = cast<FixedVectorType>(Src->getType())->getNumElements();
 
   // Extract and apply reduction ops in ascending order:
@@ -1136,7 +1141,7 @@ Value *getOrderedReduction(IRBuilderBase &Builder, Value *Acc, Value *Src,
     } else {
       assert(RecurrenceDescriptor::isMinMaxRecurrenceKind(RdxKind) &&
              "Invalid min/max");
-      Result = createMinMaxOp(Builder, RdxKind, Result, Ext);
+      Result = llvm::MyLoopUtils::createMinMaxOp(Builder, RdxKind, Result, Ext);
     }
   }
 
@@ -1144,10 +1149,9 @@ Value *getOrderedReduction(IRBuilderBase &Builder, Value *Acc, Value *Src,
 }
 
 // Helper to generate a log2 shuffle reduction.
-Value *getShuffleReduction(IRBuilderBase &Builder, Value *Src,
-                                 unsigned Op,
-                                 TargetTransformInfo::ReductionShuffle RS,
-                                 RecurKind RdxKind) {
+Value *getShuffleReduction(IRBuilderBase &Builder, Value *Src, unsigned Op,
+                           TargetTransformInfo::ReductionShuffle RS,
+                           RecurKind RdxKind) {
   unsigned VF = cast<FixedVectorType>(Src->getType())->getNumElements();
   // VF is a power of 2 so we can emit the reduction using log2(VF) shuffles
   // and vector ops, reducing the set of values being computed by half each
@@ -1171,7 +1175,7 @@ Value *getShuffleReduction(IRBuilderBase &Builder, Value *Src,
     } else {
       assert(RecurrenceDescriptor::isMinMaxRecurrenceKind(RdxKind) &&
              "Invalid min/max");
-      TmpVec = createMinMaxOp(Builder, RdxKind, TmpVec, Shuf);
+      TmpVec = MyLoopUtils::createMinMaxOp(Builder, RdxKind, TmpVec, Shuf);
     }
   };
 
@@ -1202,8 +1206,8 @@ Value *getShuffleReduction(IRBuilderBase &Builder, Value *Src,
   return Builder.CreateExtractElement(TmpVec, Builder.getInt32(0));
 }
 
-Value *createAnyOfReduction(IRBuilderBase &Builder, Value *Src,
-                                  Value *InitVal, PHINode *OrigPhi) {
+Value *createAnyOfReduction(IRBuilderBase &Builder, Value *Src, Value *InitVal,
+                            PHINode *OrigPhi) {
   Value *NewVal = nullptr;
 
   // First use the original phi to determine the new value we're trying to
@@ -1261,7 +1265,7 @@ Value *getReductionIdentity(Intrinsic::ID RdxID, Type *Ty,
   case Intrinsic::vector_reduce_and:
   case Intrinsic::vector_reduce_fadd:
   case Intrinsic::vector_reduce_fmul: {
-    unsigned Opc = getArithmeticReductionInstruction(RdxID);
+    unsigned Opc = llvm::MyLoopUtils::getArithmeticReductionInstruction(RdxID);
     return ConstantExpr::getBinOpIdentity(Opc, Ty, false,
                                           Flags.noSignedZeros());
   }
@@ -1269,7 +1273,7 @@ Value *getReductionIdentity(Intrinsic::ID RdxID, Type *Ty,
   case Intrinsic::vector_reduce_umin:
   case Intrinsic::vector_reduce_smin:
   case Intrinsic::vector_reduce_smax: {
-    Intrinsic::ID ScalarID = getMinMaxReductionIntrinsicOp(RdxID);
+    Intrinsic::ID ScalarID = llvm::MyLoopUtils::getMinMaxReductionIntrinsicOp(RdxID);
     return ConstantExpr::getIntrinsicIdentity(ScalarID, Ty);
   }
   case Intrinsic::vector_reduce_fmax:
@@ -1294,16 +1298,16 @@ Value *getRecurrenceIdentity(RecurKind K, Type *Tp, FastMathFlags FMF) {
   assert((!(K == RecurKind::FMin || K == RecurKind::FMax) ||
           (FMF.noNaNs() && FMF.noSignedZeros())) &&
          "nnan, nsz is expected to be set for FP min/max reduction.");
-  Intrinsic::ID RdxID = getReductionIntrinsicID(K);
-  return getReductionIdentity(RdxID, Tp, FMF);
+  Intrinsic::ID RdxID = llvm::MyLoopUtils::myGetReductionIntrinsicID(K);
+  return llvm::MyLoopUtils::getReductionIdentity(RdxID, Tp, FMF);
 }
 
 Value *createSimpleReduction(IRBuilderBase &Builder, Value *Src,
                              RecurKind RdxKind) {
   auto *SrcVecEltTy = cast<VectorType>(Src->getType())->getElementType();
   auto getIdentity = [&]() {
-    return getRecurrenceIdentity(RdxKind, SrcVecEltTy,
-                                 Builder.getFastMathFlags());
+    return llvm::MyLoopUtils::getRecurrenceIdentity(RdxKind, SrcVecEltTy,
+                                                    Builder.getFastMathFlags());
   };
   switch (RdxKind) {
   case RecurKind::Add:
@@ -1323,7 +1327,8 @@ Value *createSimpleReduction(IRBuilderBase &Builder, Value *Src,
   case RecurKind::FMaximum:
   case RecurKind::FMinimumNum:
   case RecurKind::FMaximumNum:
-    return Builder.CreateUnaryIntrinsic(getReductionIntrinsicID(RdxKind), Src);
+    return Builder.CreateUnaryIntrinsic(
+        llvm::MyLoopUtils::myGetReductionIntrinsicID(RdxKind), Src);
   case RecurKind::FMulAdd:
   case RecurKind::FAdd:
     return Builder.CreateFAddReduce(getIdentity(), Src);
@@ -1339,18 +1344,19 @@ Value *createSimpleReduction(IRBuilderBase &Builder, Value *Src, RecurKind Kind,
   assert(!RecurrenceDescriptor::isAnyOfRecurrenceKind(Kind) &&
          !RecurrenceDescriptor::isFindIVRecurrenceKind(Kind) &&
          "AnyOf and FindIV reductions are not supported.");
-  Intrinsic::ID Id = getReductionIntrinsicID(Kind);
+  Intrinsic::ID Id = llvm::MyLoopUtils::myGetReductionIntrinsicID(Kind);
   auto VPID = VPIntrinsic::getForIntrinsic(Id);
   assert(VPReductionIntrinsic::isVPReduction(VPID) &&
          "No VPIntrinsic for this reduction");
   auto *EltTy = cast<VectorType>(Src->getType())->getElementType();
-  Value *Iden = getRecurrenceIdentity(Kind, EltTy, Builder.getFastMathFlags());
+  Value *Iden = llvm::MyLoopUtils::getRecurrenceIdentity(Kind, EltTy,
+                                                   Builder.getFastMathFlags());
   Value *Ops[] = {Iden, Src, Mask, EVL};
   return Builder.CreateIntrinsic(EltTy, VPID, Ops);
 }
 
-Value *createOrderedReduction(IRBuilderBase &B, RecurKind Kind,
-                                    Value *Src, Value *Start) {
+Value *createOrderedReduction(IRBuilderBase &B, RecurKind Kind, Value *Src,
+                              Value *Start) {
   assert((Kind == RecurKind::FAdd || Kind == RecurKind::FMulAdd) &&
          "Unexpected reduction kind");
   assert(Src->getType()->isVectorTy() && "Expected a vector type");
@@ -1360,14 +1366,14 @@ Value *createOrderedReduction(IRBuilderBase &B, RecurKind Kind,
 }
 
 Value *createOrderedReduction(IRBuilderBase &Builder, RecurKind Kind,
-                                    Value *Src, Value *Start, Value *Mask,
-                                    Value *EVL) {
+                              Value *Src, Value *Start, Value *Mask,
+                              Value *EVL) {
   assert((Kind == RecurKind::FAdd || Kind == RecurKind::FMulAdd) &&
          "Unexpected reduction kind");
   assert(Src->getType()->isVectorTy() && "Expected a vector type");
   assert(!Start->getType()->isVectorTy() && "Expected a scalar type");
 
-  Intrinsic::ID Id = getReductionIntrinsicID(RecurKind::FAdd);
+  Intrinsic::ID Id = llvm::MyLoopUtils::myGetReductionIntrinsicID(RecurKind::FAdd);
   auto VPID = VPIntrinsic::getForIntrinsic(Id);
   assert(VPReductionIntrinsic::isVPReduction(VPID) &&
          "No VPIntrinsic for this reduction");
@@ -1377,7 +1383,7 @@ Value *createOrderedReduction(IRBuilderBase &Builder, RecurKind Kind,
 }
 
 void propagateIRFlags(Value *I, ArrayRef<Value *> VL, Value *OpValue,
-                            bool IncludeWrapFlags) {
+                      bool IncludeWrapFlags) {
   auto *VecOp = dyn_cast<Instruction>(I);
   if (!VecOp)
     return;
@@ -1396,36 +1402,34 @@ void propagateIRFlags(Value *I, ArrayRef<Value *> VL, Value *OpValue,
   }
 }
 
-bool isKnownNegativeInLoop(const SCEV *S, const Loop *L,
-                                 ScalarEvolution &SE) {
+bool isKnownNegativeInLoop(const SCEV *S, const Loop *L, ScalarEvolution &SE) {
   const SCEV *Zero = SE.getZero(S->getType());
   return SE.isAvailableAtLoopEntry(S, L) &&
          SE.isLoopEntryGuardedByCond(L, ICmpInst::ICMP_SLT, S, Zero);
 }
 
 bool isKnownNonNegativeInLoop(const SCEV *S, const Loop *L,
-                                    ScalarEvolution &SE) {
+                              ScalarEvolution &SE) {
   const SCEV *Zero = SE.getZero(S->getType());
   return SE.isAvailableAtLoopEntry(S, L) &&
          SE.isLoopEntryGuardedByCond(L, ICmpInst::ICMP_SGE, S, Zero);
 }
 
-bool isKnownPositiveInLoop(const SCEV *S, const Loop *L,
-                                 ScalarEvolution &SE) {
+bool isKnownPositiveInLoop(const SCEV *S, const Loop *L, ScalarEvolution &SE) {
   const SCEV *Zero = SE.getZero(S->getType());
   return SE.isAvailableAtLoopEntry(S, L) &&
          SE.isLoopEntryGuardedByCond(L, ICmpInst::ICMP_SGT, S, Zero);
 }
 
 bool isKnownNonPositiveInLoop(const SCEV *S, const Loop *L,
-                                    ScalarEvolution &SE) {
+                              ScalarEvolution &SE) {
   const SCEV *Zero = SE.getZero(S->getType());
   return SE.isAvailableAtLoopEntry(S, L) &&
          SE.isLoopEntryGuardedByCond(L, ICmpInst::ICMP_SLE, S, Zero);
 }
 
 bool cannotBeMinInLoop(const SCEV *S, const Loop *L, ScalarEvolution &SE,
-                             bool Signed) {
+                       bool Signed) {
   unsigned BitWidth = cast<IntegerType>(S->getType())->getBitWidth();
   APInt Min = Signed ? APInt::getSignedMinValue(BitWidth)
                      : APInt::getMinValue(BitWidth);
@@ -1435,7 +1439,7 @@ bool cannotBeMinInLoop(const SCEV *S, const Loop *L, ScalarEvolution &SE,
 }
 
 bool cannotBeMaxInLoop(const SCEV *S, const Loop *L, ScalarEvolution &SE,
-                             bool Signed) {
+                       bool Signed) {
   unsigned BitWidth = cast<IntegerType>(S->getType())->getBitWidth();
   APInt Max = Signed ? APInt::getSignedMaxValue(BitWidth)
                      : APInt::getMaxValue(BitWidth);
@@ -1556,11 +1560,10 @@ static bool checkIsIndPhi(PHINode *Phi, Loop *L, ScalarEvolution *SE,
 }
 
 int rewriteLoopExitValues(Loop *L, LoopInfo *LI, TargetLibraryInfo *TLI,
-                                ScalarEvolution *SE,
-                                const TargetTransformInfo *TTI,
-                                SCEVExpander &Rewriter, DominatorTree *DT,
-                                llvm::MyLoopUtils::ReplaceExitVal ReplaceExitValue,
-                                SmallVector<WeakTrackingVH, 16> &DeadInsts) {
+                          ScalarEvolution *SE, const TargetTransformInfo *TTI,
+                          SCEVExpander &Rewriter, DominatorTree *DT,
+                          llvm::MyLoopUtils::ReplaceExitVal ReplaceExitValue,
+                          SmallVector<WeakTrackingVH, 16> &DeadInsts) {
   // Check a pre-condition.
   assert(L->isRecursivelyLCSSAForm(*DT, *LI) &&
          "Indvars did not preserve LCSSA!");
@@ -1678,8 +1681,9 @@ int rewriteLoopExitValues(Loop *L, LoopInfo *LI, TargetLibraryInfo *TLI,
         // away. Avoid doing so unless we know we have a value which computes
         // the ExitValue already. TODO: This should be merged into SCEV
         // expander to leverage its knowledge of existing expressions.
-        if (ReplaceExitValue != llvm::MyLoopUtils::AlwaysRepl && !isa<SCEVConstant>(ExitValue) &&
-            !isa<SCEVUnknown>(ExitValue) && hasHardUserWithinLoop(L, Inst))
+        if (ReplaceExitValue != llvm::MyLoopUtils::AlwaysRepl &&
+            !isa<SCEVConstant>(ExitValue) && !isa<SCEVUnknown>(ExitValue) &&
+            hasHardUserWithinLoop(L, Inst))
           continue;
 
         // Check if expansions of this SCEV would count as being high cost.
@@ -1724,9 +1728,9 @@ int rewriteLoopExitValues(Loop *L, LoopInfo *LI, TargetLibraryInfo *TLI,
     Value *ExitVal = Rewriter.expandCodeFor(
         Phi.ExpansionSCEV, Phi.PN->getType(), Phi.ExpansionPoint);
 
-    LLVM_DEBUG(dbgs() << "rewriteLoopExitValues: AfterLoopVal = " << *ExitVal
+    llvm::errs() << "rewriteLoopExitValues: AfterLoopVal = " << *ExitVal
                       << '\n'
-                      << "  LoopVal = " << *(Phi.ExpansionPoint) << "\n");
+                      << "  LoopVal = " << *(Phi.ExpansionPoint) << "\n";
 
 #ifndef NDEBUG
     // If we reuse an instruction from a loop which is neither L nor one of
@@ -1764,13 +1768,15 @@ int rewriteLoopExitValues(Loop *L, LoopInfo *LI, TargetLibraryInfo *TLI,
   // The insertion point instruction may have been deleted; clear it out
   // so that the rewriter doesn't trip over it later.
   Rewriter.clearInsertPoint();
+  
+  llvm::errs() << "rewriteLoopExitValues() Num replaced " << NumReplaced << "\n";
   return NumReplaced;
 }
 
 /// Set weights for \p UnrolledLoop and \p RemainderLoop based on weights for
 /// \p OrigLoop.
 void setProfileInfoAfterUnrolling(Loop *OrigLoop, Loop *UnrolledLoop,
-                                        Loop *RemainderLoop, uint64_t UF) {
+                                  Loop *RemainderLoop, uint64_t UF) {
   assert(UF > 0 && "Zero unrolled factor is not supported");
   assert(UnrolledLoop != RemainderLoop &&
          "Unrolled and Remainder loops are expected to distinct");
@@ -1778,7 +1784,8 @@ void setProfileInfoAfterUnrolling(Loop *OrigLoop, Loop *UnrolledLoop,
   // Get number of iterations in the original scalar loop.
   unsigned OrigLoopInvocationWeight = 0;
   std::optional<unsigned> OrigAverageTripCount =
-      getLoopEstimatedTripCount(OrigLoop, &OrigLoopInvocationWeight);
+      llvm::MyLoopUtils::getLoopEstimatedTripCount(OrigLoop,
+                                             &OrigLoopInvocationWeight);
   if (!OrigAverageTripCount)
     return;
 
@@ -1787,10 +1794,10 @@ void setProfileInfoAfterUnrolling(Loop *OrigLoop, Loop *UnrolledLoop,
   // Calculate number of iterations for remainder loop.
   unsigned RemainderAverageTripCount = *OrigAverageTripCount % UF;
 
-  setLoopEstimatedTripCount(UnrolledLoop, UnrolledAverageTripCount,
-                            OrigLoopInvocationWeight);
-  setLoopEstimatedTripCount(RemainderLoop, RemainderAverageTripCount,
-                            OrigLoopInvocationWeight);
+  llvm::MyLoopUtils::setLoopEstimatedTripCount(UnrolledLoop, UnrolledAverageTripCount,
+                                         OrigLoopInvocationWeight);
+  llvm::MyLoopUtils::setLoopEstimatedTripCount(
+      RemainderLoop, RemainderAverageTripCount, OrigLoopInvocationWeight);
 }
 
 /// Utility that implements appending of loops onto a worklist.
@@ -1798,7 +1805,7 @@ void setProfileInfoAfterUnrolling(Loop *OrigLoop, Loop *UnrolledLoop,
 /// and the worklist is processed LIFO.
 template <typename RangeT>
 void appendReversedLoopsToWorklist(
-    RangeT &&Loops, SmallPriorityWorklist<Loop *, 4> &Worklist) {
+    RangeT &&Loops, llvm::SmallPriorityWorklist<Loop *, 4> &Worklist) {
   // We use an internal worklist to build up the preorder traversal without
   // recursion.
   SmallVector<Loop *, 4> PreOrderLoops, PreOrderWorklist;
@@ -1821,27 +1828,31 @@ void appendReversedLoopsToWorklist(
   }
 }
 
-template <typename RangeT>
-void appendLoopsToWorklist(RangeT &&Loops,
-                                 SmallPriorityWorklist<Loop *, 4> &Worklist) {
-  appendReversedLoopsToWorklist(reverse(Loops), Worklist);
-}
+// template <typename RangeT>
+// void appendLoopsToWorklist(RangeT &&Loops,
+//                                  llvm::SmallPriorityWorklist<Loop *, 4>
+//                                  &Worklist) {
+//   appendReversedLoopsToWorklist(reverse(Loops), Worklist);
+// }
 
-template LLVM_EXPORT_TEMPLATE void
-appendLoopsToWorklist<ArrayRef<Loop *> &>(
-    ArrayRef<Loop *> &Loops, SmallPriorityWorklist<Loop *, 4> &Worklist);
+// template LLVM_EXPORT_TEMPLATE void
+// appendLoopsToWorklist<ArrayRef<Loop *> &>(
+//     ArrayRef<Loop *> &Loops, llvm::SmallPriorityWorklist<Loop *, 4>
+//     &Worklist);
 
-template LLVM_EXPORT_TEMPLATE void
-appendLoopsToWorklist<Loop &>(Loop &L,
-                                    SmallPriorityWorklist<Loop *, 4> &Worklist);
+// template LLVM_EXPORT_TEMPLATE void
+// appendLoopsToWorklist<Loop &>(Loop &L,
+//                                     llvm::SmallPriorityWorklist<Loop *, 4>
+//                                     &Worklist);
 
-void appendLoopsToWorklist(LoopInfo &LI,
-                                 SmallPriorityWorklist<Loop *, 4> &Worklist) {
-  appendReversedLoopsToWorklist(LI, Worklist);
-}
+// void appendLoopsToWorklist(LoopInfo &LI,
+//                                  llvm::SmallPriorityWorklist<Loop *, 4>
+//                                  &Worklist) {
+//   llvm::appendReversedLoopsToWorklist(LI, Worklist);
+// }
 
 Loop *cloneLoop(Loop *L, Loop *PL, ValueToValueMapTy &VM, LoopInfo *LI,
-                      LPPassManager *LPM) {
+                LPPassManager *LPM) {
   Loop &New = *LI->AllocateLoop();
   if (PL)
     PL->addChildLoop(&New);
@@ -1858,7 +1869,7 @@ Loop *cloneLoop(Loop *L, Loop *PL, ValueToValueMapTy &VM, LoopInfo *LI,
 
   // Add all of the subloops to the new loop.
   for (Loop *I : *L)
-    cloneLoop(I, &New, VM, LI, LPM);
+    llvm::MyLoopUtils::cloneLoop(I, &New, VM, LI, LPM);
 
   return &New;
 }
@@ -1882,7 +1893,7 @@ static PointerBounds expandBounds(const RuntimeCheckingPtrGroup *CG,
   Type *PtrArithTy = PointerType::get(Ctx, CG->AddressSpace);
 
   Value *Start = nullptr, *End = nullptr;
-  LLVM_DEBUG(dbgs() << "LAA: Adding RT check for range:\n");
+  llvm::errs() << "LAA: Adding RT check for range:\n";
   const SCEV *Low = CG->Low, *High = CG->High, *Stride = nullptr;
 
   // If the Low and High values are themselves loop-variant, then we may want
@@ -1911,8 +1922,8 @@ static PointerBounds expandBounds(const RuntimeCheckingPtrGroup *CG,
         const SCEV *NewHigh =
             cast<SCEVAddRecExpr>(High)->evaluateAtIteration(OuterExitCount, SE);
         if (!isa<SCEVCouldNotCompute>(NewHigh)) {
-          LLVM_DEBUG(dbgs() << "LAA: Expanded RT check for range to include "
-                               "outer loop in order to permit hoisting\n");
+          llvm::errs() << "LAA: Expanded RT check for range to include "
+                               "outer loop in order to permit hoisting\n";
           High = NewHigh;
           Low = cast<SCEVAddRecExpr>(Low)->getStart();
           // If there is a possibility that the stride is negative then we have
@@ -1920,9 +1931,9 @@ static PointerBounds expandBounds(const RuntimeCheckingPtrGroup *CG,
           if (!SE.isKnownNonNegative(
                   SE.applyLoopGuards(Recur, HighAR->getLoop()))) {
             Stride = Recur;
-            LLVM_DEBUG(dbgs() << "LAA: ... but need to check stride is "
+            llvm::errs() << "LAA: ... but need to check stride is "
                                  "positive: "
-                              << *Stride << '\n');
+                              << *Stride << '\n';
           }
         }
       }
@@ -1938,7 +1949,7 @@ static PointerBounds expandBounds(const RuntimeCheckingPtrGroup *CG,
   }
   Value *StrideVal =
       Stride ? Exp.expandCodeFor(Stride, Stride->getType(), Loc) : nullptr;
-  LLVM_DEBUG(dbgs() << "Start: " << *Low << " End: " << *High << "\n");
+  llvm::errs() << "Start: " << *Low << " End: " << *High << "\n";
   return {Start, End, StrideVal};
 }
 
@@ -1963,10 +1974,10 @@ expandBounds(const SmallVectorImpl<RuntimePointerCheck> &PointerChecks, Loop *L,
   return ChecksWithBounds;
 }
 
-Value *addRuntimeChecks(
-    Instruction *Loc, Loop *TheLoop,
-    const SmallVectorImpl<RuntimePointerCheck> &PointerChecks,
-    SCEVExpander &Exp, bool HoistRuntimeChecks) {
+Value *
+addRuntimeChecks(Instruction *Loc, Loop *TheLoop,
+                 const SmallVectorImpl<RuntimePointerCheck> &PointerChecks,
+                 SCEVExpander &Exp, bool HoistRuntimeChecks) {
   // TODO: Move noalias annotation code from LoopVersioning here and share with
   // LV if possible.
   // TODO: Pass  RtPtrChecking instead of PointerChecks and SE separately, if
@@ -2070,7 +2081,7 @@ Value *addDiffRuntimeChecks(
 
 std::optional<llvm::MyLoopUtils::IVConditionInfo>
 hasPartialIVCondition(const Loop &L, unsigned MSSAThreshold,
-                            const MemorySSA &MSSA, AAResults &AA) {
+                      const MemorySSA &MSSA, AAResults &AA) {
   auto *TI = dyn_cast<BranchInst>(L.getHeader()->getTerminator());
   if (!TI || !TI->isConditional())
     return {};
@@ -2242,4 +2253,4 @@ hasPartialIVCondition(const Loop &L, unsigned MSSAThreshold,
 
   return {};
 }
-} // namespace MyLoopUtils
+} // namespace llvm::MyLoopUtils

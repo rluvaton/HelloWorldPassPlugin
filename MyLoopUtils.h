@@ -15,38 +15,42 @@
 
 #include "llvm/Analysis/IVDescriptors.h"
 #include "llvm/Analysis/LoopAccessAnalysis.h"
+#include "llvm/Analysis/MemorySSAUpdater.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/Support/Compiler.h"
+#include "llvm/Transforms/Utils/LoopUtils.h"
 #include "llvm/Transforms/Utils/ValueMapper.h"
+#include "llvm/Transforms/Utils/ScalarEvolutionExpander.h"
+
 
 namespace llvm {
 
 namespace MyLoopUtils {
 
 template <typename T> class DomTreeNodeBase;
-using DomTreeNode = DomTreeNodeBase<BasicBlock>;
-class AssumptionCache;
-class StringRef;
-class AnalysisUsage;
-class TargetTransformInfo;
-class AAResults;
-class BasicBlock;
-class ICFLoopSafetyInfo;
-class IRBuilderBase;
-class Loop;
-class LoopInfo;
-class MemoryAccess;
-class MemorySSA;
-class MemorySSAUpdater;
-class OptimizationRemarkEmitter;
-class PredIteratorCache;
-class ScalarEvolution;
-class SCEV;
-class SCEVExpander;
-class TargetLibraryInfo;
-class LPPassManager;
-class Instruction;
-struct RuntimeCheckingPtrGroup;
+// using DomTreeNode = DomTreeNodeBase<BasicBlock>;
+// class AssumptionCache;
+// class StringRef;
+// class AnalysisUsage;
+// class TargetTransformInfo;
+// class AAResults;
+// class BasicBlock;
+// class ICFLoopSafetyInfo;
+// class IRBuilderBase;
+// class Loop;
+// class LoopInfo;
+// class MemoryAccess;
+// class MemorySSA;
+// class MemorySSAUpdater;
+// class OptimizationRemarkEmitter;
+// class PredIteratorCache;
+// class ScalarEvolution;
+// class SCEV;
+// class SCEVExpander;
+// class TargetLibraryInfo;
+// class LPPassManager;
+// class Instruction;
+// struct RuntimeCheckingPtrGroup;
 typedef std::pair<const RuntimeCheckingPtrGroup *,
                   const RuntimeCheckingPtrGroup *>
     RuntimePointerCheck;
@@ -159,7 +163,7 @@ protected:
 LLVM_ABI bool sinkRegion(DomTreeNode *, AAResults *, LoopInfo *,
                          DominatorTree *, TargetLibraryInfo *,
                          TargetTransformInfo *, Loop *CurLoop,
-                         MemorySSAUpdater &, ICFLoopSafetyInfo *,
+                         MemorySSAUpdater &, llvm::ICFLoopSafetyInfo *,
                          SinkAndHoistLICMFlags &, OptimizationRemarkEmitter *,
                          Loop *OutermostLoop = nullptr);
 
@@ -168,7 +172,7 @@ LLVM_ABI bool sinkRegion(DomTreeNode *, AAResults *, LoopInfo *,
 LLVM_ABI bool sinkRegionForLoopNest(DomTreeNode *, AAResults *, LoopInfo *,
                                     DominatorTree *, TargetLibraryInfo *,
                                     TargetTransformInfo *, Loop *,
-                                    MemorySSAUpdater &, ICFLoopSafetyInfo *,
+                                    llvm::MemorySSAUpdater &, ICFLoopSafetyInfo *,
                                     SinkAndHoistLICMFlags &,
                                     OptimizationRemarkEmitter *);
 
@@ -374,7 +378,7 @@ LLVM_ABI bool canSinkOrHoistInst(Instruction &I, AAResults *AA,
 
 /// Returns the llvm.vector.reduce intrinsic that corresponds to the recurrence
 /// kind.
-LLVM_ABI constexpr Intrinsic::ID getReductionIntrinsicID(RecurKind RK);
+LLVM_ABI constexpr Intrinsic::ID myGetReductionIntrinsicID(RecurKind RK);
 
 /// Returns the arithmetic instruction opcode used when expanding a reduction.
 LLVM_ABI unsigned getArithmeticReductionInstruction(Intrinsic::ID RdxID);
@@ -502,12 +506,12 @@ enum ReplaceExitVal {
 /// outside of the loop that use the final values of the current expressions.
 /// Return the number of loop exit values that have been replaced, and the
 /// corresponding phi node will be added to DeadInsts.
-LLVM_ABI int rewriteLoopExitValues(Loop *L, LoopInfo *LI,
-                                   TargetLibraryInfo *TLI, ScalarEvolution *SE,
-                                   const TargetTransformInfo *TTI,
-                                   SCEVExpander &Rewriter, DominatorTree *DT,
-                                   ReplaceExitVal ReplaceExitValue,
-                                   SmallVector<WeakTrackingVH, 16> &DeadInsts);
+LLVM_ABI int rewriteLoopExitValues(llvm::Loop *L, llvm::LoopInfo *LI,
+                                   llvm::TargetLibraryInfo *TLI, llvm::ScalarEvolution *SE,
+                                   const llvm::TargetTransformInfo *TTI,
+                                   llvm::SCEVExpander &Rewriter, llvm::DominatorTree *DT,
+                                   llvm::MyLoopUtils::ReplaceExitVal ReplaceExitValue,
+                                   llvm::SmallVector<WeakTrackingVH, 16> &DeadInsts);
 
 /// Set weights for \p UnrolledLoop and \p RemainderLoop based on weights for
 /// \p OrigLoop and the following distribution of \p OrigLoop iteration among \p
