@@ -30,6 +30,8 @@ add_library(HelloWorldPlugin MODULE
   HelloWorldPlugin.h
   MySCCPSolver.cpp
   MySCCPSolver.h
+  MyLoopUtils.cpp
+  MyLoopUtils.h
   )
 
 set_target_properties(HelloWorldPlugin PROPERTIES PREFIX "")
